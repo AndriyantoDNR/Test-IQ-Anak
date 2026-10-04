@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SiapSD.Cognitive.Api/SiapSD.Cognitive.Api.csproj" />
+    <Project Path="src/SiapSD.Cognitive.Application/SiapSD.Cognitive.Application.csproj" />
+    <Project Path="src/SiapSD.Cognitive.Domain/SiapSD.Cognitive.Domain.csproj" />
+    <Project Path="src/SiapSD.Cognitive.Infrastructure/SiapSD.Cognitive.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SiapSD.Cognitive.Tests/SiapSD.Cognitive.Tests.csproj" />
+  </Folder>
+</Solution>

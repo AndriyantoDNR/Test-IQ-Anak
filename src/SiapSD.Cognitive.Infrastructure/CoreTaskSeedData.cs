@@ -1,0 +1,11 @@
+using Microsoft.EntityFrameworkCore;
+using SiapSD.Cognitive.Domain;
+namespace SiapSD.Cognitive.Infrastructure;
+public static class CoreTaskSeedData {
+ public static async Task EnsureAsync(SiapSDDbContext db) {
+  var bp=await db.AssessmentBlueprints.SingleAsync(x=>x.Code=="STANDARD-5-6");
+  var specs=new[]{("Inhibitory Control",QuestionType.InhibitoryControl,300,"Pilih gambar yang BUKAN merah.","Pilih warna lain",new[]{("A","🔴"),("B","🔵"),("C","🔴")},"B"),("Rule Switching",QuestionType.RuleSwitch,301,"Jika tertulis WARNA, pilih warna. Jika BENTUK, pilih bentuk.","WARNA: pilih biru",new[]{("A","🔴"),("B","🔵"),("C","🔺")},"B"),("Grid Planning",QuestionType.GridPlanning,400,"Susun langkah agar anak mencapai bintang.","Bawa anak ke bintang",Array.Empty<(string,string)>(),"[\"Right\",\"Right\",\"Down\",\"Down\"]"),("Symbol Matching",QuestionType.SymbolMatching,500,"Pilih simbol yang sama.","Cari pasangan: 🐟",new[]{("A","🐟"),("B","🌟"),("C","🍎")},"A")};
+  foreach(var (name,type,order,instruction,text,options,answer) in specs){var sub=await db.Subtests.SingleAsync(x=>x.Name==name);var domain=await db.CognitiveDomains.FindAsync(sub.CognitiveDomainId)??throw new InvalidOperationException();if(!await db.AssessmentBlueprintItems.AnyAsync(x=>x.AssessmentBlueprintId==bp.Id&&x.SubtestId==sub.Id))db.AssessmentBlueprintItems.Add(new AssessmentBlueprintItem{AssessmentBlueprintId=bp.Id,CognitiveDomainId=domain.Id,SubtestId=sub.Id,InitialDifficulty=1,MinimumQuestions=1,MaximumQuestions=1,DisplayOrder=order});var code=$"CORE-{sub.Code}";if(await db.Questions.AnyAsync(x=>x.Code==code))continue;var stimulus=type==QuestionType.GridPlanning?"{\"rows\":3,\"columns\":3,\"start\":[0,0],\"goal\":[2,2],\"obstacles\":[[1,1]]}":type==QuestionType.SymbolMatching?"{\"durationMs\":60000}":"{}";var q=new Question{Code=code,CognitiveDomainId=domain.Id,SubtestId=sub.Id,QuestionType=type,Difficulty=1,AgeMinMonths=48,AgeMaxMonths=120,Instruction=instruction,QuestionText=text,StimulusJson=stimulus,CorrectAnswerJson=answer,IsPublished=true};foreach(var (code2,label) in options)q.Options.Add(new QuestionOption{Code=code2,Text=label,DisplayOrder=q.Options.Count+1,IsCorrect=code2==answer});db.Questions.Add(q);}
+  await db.SaveChangesAsync();
+ }
+}

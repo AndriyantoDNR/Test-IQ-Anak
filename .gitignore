@@ -1,0 +1,31 @@
+# .NET / Visual Studio
+.vs/
+**/bin/
+**/obj/
+*.user
+*.suo
+
+# Node, Playwright, and test output
+**/node_modules/
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+**/.cache/
+
+# Local configuration, secrets, logs, and databases
+.env
+.env.*
+!.env.example
+**/secrets.json
+*.log
+*.db
+*.sqlite
+*.sqlite3
+postgresql-data/
+
+# Local generated analysis
+graphify-out/
+
+# Embedded third-party tooling, not part of the SiapSD application
+src/.github/PonyTail/
