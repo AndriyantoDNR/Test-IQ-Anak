@@ -14,7 +14,7 @@ public static class CanonicalQuestionBankSeedData
         var subtests = await db.Subtests.ToDictionaryAsync(x => x.Name);
         var validator = new QuestionContentValidator();
         foreach (var old in await db.Questions.Where(x => x.IsPublished).ToListAsync())
-            if (!old.Code.StartsWith("CORE-", StringComparison.Ordinal) || old.Code.Split('-').Last().Length != 3) old.IsPublished = false;
+            if (!old.Code.StartsWith("CORE-", StringComparison.Ordinal) || !int.TryParse(old.Code.Split('-').Last(), out _)) old.IsPublished = false;
 
         var standard = new[] { "Pattern Completion", "Missing Part", "Odd One Out", "Number Comparison", "Visual Addition" };
         foreach (var name in standard) await AddFamily(name, 15, "standard", 0);
@@ -29,11 +29,18 @@ public static class CanonicalQuestionBankSeedData
         {
             var subtest = subtests[name];
             var item = await db.AssessmentBlueprintItems.SingleOrDefaultAsync(x => x.AssessmentBlueprintId == blueprint.Id && x.SubtestId == subtest.Id);
-            if (item is null) db.AssessmentBlueprintItems.Add(new AssessmentBlueprintItem { AssessmentBlueprintId = blueprint.Id, CognitiveDomainId = subtest.CognitiveDomainId, SubtestId = subtest.Id, InitialDifficulty = 1, MinimumQuestions = 1, MaximumQuestions = count, DisplayOrder = order + subtest.DisplayOrder });
-            else item.MaximumQuestions = count;
+            if (item is null) db.AssessmentBlueprintItems.Add(new AssessmentBlueprintItem { AssessmentBlueprintId = blueprint.Id, CognitiveDomainId = subtest.CognitiveDomainId, SubtestId = subtest.Id, InitialDifficulty = 1, MinimumQuestions = 1, MaximumQuestions = 1, DisplayOrder = order + subtest.DisplayOrder });
+            else item.MaximumQuestions = 1;
             for (var index = 1; index <= count; index++)
             {
-                var code = $"CORE-{subtest.Code}-{index:000}";
+                var v1Code = $"CORE-{subtest.Code}-{index:000}";
+                if (family == "standard")
+                {
+                    // Retire template V1 rows rather than rewriting historic content.
+                    var v1 = await db.Questions.SingleOrDefaultAsync(x => x.Code == v1Code);
+                    if (v1 is not null) v1.IsPublished = false;
+                }
+                var code = family == "standard" ? $"{v1Code}-V2" : v1Code;
                 if (await db.Questions.AnyAsync(x => x.Code == code)) continue;
                 var question = Create(subtest, code, index, family);
                 var errors = validator.Validate(question);
@@ -54,7 +61,7 @@ public static class CanonicalQuestionBankSeedData
             var pool = subtest.Name == "Spatial Memory" ? new[] { "0,0", "1,2", "2,1", "0,2", "2,0", "1,1" } : new[] { "bola", "buku", "rumah", "bintang", "mobil", "kucing", "tepuk" };
             var sequence = Enumerable.Range(0, span).Select(x => pool[(x + index) % pool.Length]).ToArray();
             q.Instruction = "Perhatikan urutan, lalu ulangi setelah layar kosong."; q.QuestionText = $"{subtest.Name} — urutan {index}";
-            q.StimulusJson = JsonSerializer.Serialize(new { sequence, presentationDurationMs = 700 + difficulty * 100, retentionGapMs = 700 + difficulty * 100, span }); q.CorrectAnswerJson = JsonSerializer.Serialize(sequence);
+            q.StimulusJson = JsonSerializer.Serialize(new { sequence, candidatePool = pool, presentationDurationMs = 700 + difficulty * 100, retentionGapMs = 700 + difficulty * 100, span }); q.CorrectAnswerJson = JsonSerializer.Serialize(sequence);
         }
         else if (family == "planning")
         {
@@ -65,10 +72,58 @@ public static class CanonicalQuestionBankSeedData
         else
         {
             q.QuestionType = family switch { "attention" => subtest.Name == "Target Detection" ? QuestionType.TargetDetection : QuestionType.VisualSearch, "executive" => subtest.Name == "Inhibitory Control" ? QuestionType.InhibitoryControl : QuestionType.RuleSwitch, "speed" => QuestionType.SymbolMatching, "standard" when subtest.Name == "Pattern Completion" => QuestionType.PatternChoice, "standard" when subtest.Name == "Missing Part" => QuestionType.MissingPart, "standard" when subtest.Name == "Odd One Out" => QuestionType.OddOneOut, _ => QuestionType.MathChoice };
+            if (family == "standard") { PopulateStandard(q, subtest.Name, index, difficulty); return q; }
             var correct = "B"; q.Instruction = family == "attention" ? "Pilih semua target yang diminta." : family == "executive" ? "Ikuti aturan pada kartu." : "Pilih jawaban terbaik."; q.QuestionText = $"{subtest.Name} — latihan {index}";
             q.StimulusJson = JsonSerializer.Serialize(new { task = subtest.Name, item = index, target = $"target-{index}", items = new[] { $"distractor-{index}", $"target-{index}", $"distractor-{index + 1}" }, durationMs = family == "speed" ? 60000 : 0 }); q.CorrectAnswerJson = JsonSerializer.Serialize(correct);
             q.Options.AddRange(new[] { new QuestionOption { Code = "A", Text = $"Pilihan {index}A", DisplayOrder = 1 }, new QuestionOption { Code = "B", Text = $"Pilihan {index}B", DisplayOrder = 2, IsCorrect = true }, new QuestionOption { Code = "C", Text = $"Pilihan {index}C", DisplayOrder = 3 } });
         }
         return q;
     }
+
+    static void PopulateStandard(Question q, string family, int index, int difficulty)
+    {
+        var (prompt, correct, first, third) = family switch
+        {
+            "Pattern Completion" => Pattern(index),
+            "Missing Part" => MissingPart(index),
+            "Odd One Out" => OddOneOut(index),
+            "Number Comparison" => NumberComparison(index),
+            "Visual Addition" => VisualAddition(index),
+            _ => throw new InvalidOperationException($"Unsupported standard family: {family}")
+        };
+        q.Instruction = family == "Number Comparison" ? "Lihat kedua kelompok, lalu pilih jawaban yang benar." : family == "Visual Addition" ? "Hitung gambar-gambar ini, lalu pilih jumlahnya." : "Perhatikan baik-baik, lalu pilih jawaban yang paling tepat.";
+        q.QuestionText = prompt;
+        q.StimulusJson = JsonSerializer.Serialize(new { task = family, prompt, difficulty, meaningful = true });
+        q.CorrectAnswerJson = JsonSerializer.Serialize("B");
+        q.Options.AddRange(new[] { new QuestionOption { Code = "A", Text = first, DisplayOrder = 1 }, new QuestionOption { Code = "B", Text = correct, DisplayOrder = 2, IsCorrect = true }, new QuestionOption { Code = "C", Text = third, DisplayOrder = 3 } });
+    }
+
+    static (string, string, string, string) Pattern(int i)
+    {
+        var patterns = new[] { ("○ △ ○ △ ○ ?", "△", "○", "□"), ("★ ★ ● ★ ★ ● ★ ★ ?", "●", "★", "▲"), ("→ ↑ → ↑ → ?", "↑", "→", "↓"), ("kecil ○, sedang ○, besar ○, kecil ○, sedang ○, ?", "besar ○", "kecil ○", "sedang ○"), ("merah ★, biru ●, merah ★, biru ●, ?", "merah ★", "biru ★", "merah ●") };
+        var p = patterns[(i - 1) % patterns.Length]; return ($"Lanjutkan pola: {p.Item1}", p.Item2, p.Item3, p.Item4);
+    }
+    static (string, string, string, string) MissingPart(int i)
+    {
+        var items = new[] { ("Sebuah rumah memiliki dinding, pintu, jendela, dan bagian yang hilang agar lengkap adalah …", "atap", "roda", "sirip"), ("Wajah memiliki dua mata, hidung, dan mulut. Bagian yang hilang adalah …", "mata", "roda", "ekor"), ("Sepeda memiliki roda, setang, dan pedal. Bagian yang hilang agar dapat dikendarai adalah …", "roda", "sayap", "kelopak"), ("Ikan memiliki kepala, badan, ekor, dan bagian yang hilang adalah …", "sirip", "pintu", "ban"), ("Bunga memiliki kelopak, batang, dan bagian hijau di samping batang. Bagian itu adalah …", "daun", "roda", "jendela") };
+        var x = items[(i - 1) % items.Length]; return x;
+    }
+    static (string, string, string, string) OddOneOut(int i)
+    {
+        var items = new[] { ("🐱  🐶  🐰  🚗\nMana yang berbeda?", "🚗", "🐱", "🐶"), ("🍎  🍌  🍇  ⚽\nMana yang berbeda?", "⚽", "🍎", "🍌"), ("□  △  ○  🐟\nMana yang berbeda?", "🐟", "□", "△"), ("🚌  🚗  🚲  🍞\nMana yang berbeda?", "🍞", "🚌", "🚗"), ("🌹  🌻  🌷  🐦\nMana yang berbeda?", "🐦", "🌹", "🌻") };
+        return items[(i - 1) % items.Length];
+    }
+    static (string, string, string, string) NumberComparison(int i)
+    {
+        var left = 2 + i % 5; var right = left + (i % 3 == 0 ? 0 : 1);
+        var correct = right > left ? "kelompok kanan" : "sama banyak";
+        return ($"Mana yang lebih banyak?\nKiri: {new string('●', left)}\nKanan: {new string('●', right)}", correct, "kelompok kiri", right > left ? "sama banyak" : "kelompok kanan");
+    }
+    static (string, string, string, string) VisualAddition(int i)
+    {
+        var left = 1 + i % 4; var right = 1 + (i / 3) % 4; var sum = left + right;
+        var applesLeft = string.Concat(Enumerable.Repeat("apel", left)); var applesRight = string.Concat(Enumerable.Repeat("apel", right));
+        return ($"{applesLeft} + {applesRight} = ?", sum.ToString(), (sum - 1).ToString(), (sum + 1).ToString()); /*
+        return ($"{string.Concat(Enumerable.Repeat(\"🍎\", left))} + {string.Concat(Enumerable.Repeat(\"🍎\", right))} = ?", sum.ToString(), (sum - 1).ToString(), (sum + 1).ToString());
+    */ }
 }

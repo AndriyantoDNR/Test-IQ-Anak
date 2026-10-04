@@ -8,18 +8,15 @@ async function start(page: Page) {
   await createChildAndStartAssessment(page, `WM Object ${Date.now()}`)
   await advanceAssessment(page, 'memory')
 }
-async function failCurrentTrial(page: Page) {
+test('object sequence renders after the preceding working-memory modalities', async ({ page }) => {
+  await start(page)
   await expect(page.getByRole('button', { name: 'Kirim' })).toBeVisible({ timeout: 7000 })
   await page.getByRole('button', { name: 'Kirim' }).click()
-  await expect(page.getByRole('button', { name: 'Kirim' })).toBeHidden({ timeout: 3000 })
-}
-test('object sequence appears after completed visual and spatial ceilings', async ({ page }) => {
-  await start(page)
-  await failCurrentTrial(page); await failCurrentTrial(page)
   await expect(page.getByTestId('memory-spatial')).toBeVisible({ timeout: 7000 })
-  await failCurrentTrial(page); await failCurrentTrial(page)
+  await expect(page.getByRole('button', { name: 'Kirim' })).toBeVisible({ timeout: 7000 })
+  await page.getByRole('button', { name: 'Kirim' }).click()
   await expect(page.getByTestId('memory-sequence')).toBeVisible({ timeout: 7000 })
-  await expect(page.locator('[data-question-title="Object Sequence"]')).toBeVisible()
+  await expect(page.getByTestId('memory-sequence')).toHaveAttribute('data-question-title', /^Object Sequence/)
   await expect(page.getByRole('button', { name: 'Kirim' })).toBeHidden()
   await expect(page.getByRole('button', { name: 'Kirim' })).toBeVisible({ timeout: 7000 })
   await page.locator('.options button').first().click()

@@ -12,10 +12,6 @@ async function start(page: Page) {
 test('spatial memory locks grid during presentation then records ordered response', async ({ page }) => {
   await start(page)
   await expect(page.getByTestId('memory-sequence')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Kirim' })).toBeHidden()
-  await expect(page.getByRole('button', { name: 'Kirim' })).toBeVisible({ timeout: 7000 })
-  await page.getByRole('button', { name: 'Kirim' }).click()
-  await expect(page.getByRole('button', { name: 'Kirim' })).toBeHidden({ timeout: 3000 })
   await expect(page.getByRole('button', { name: 'Kirim' })).toBeVisible({ timeout: 7000 })
   await page.getByRole('button', { name: 'Kirim' }).click()
   await expect(page.getByTestId('memory-spatial')).toBeVisible({ timeout: 7000 })

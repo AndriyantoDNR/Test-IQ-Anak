@@ -56,18 +56,16 @@ export async function createChildAndStartAssessment(page: Page, name = `Browser 
 }
 
 async function waitForMemoryResponseReady(page: Page) {
-  const memory = page.getByTestId('memory-player')
-  await expect(memory.getByRole('button', { name: 'Kirim' })).toBeVisible({ timeout: 12_000 })
-  return memory
+  await expect(page.getByRole('button', { name: 'Kirim' })).toBeVisible({ timeout: 12_000 })
 }
 
 async function submitMemoryAnswer(page: Page) {
-  const memory = await waitForMemoryResponseReady(page)
-  const spatial = memory.getByTestId('spatial-response')
+  await waitForMemoryResponseReady(page)
+  const spatial = page.getByTestId('spatial-response')
   if (await spatial.isVisible().catch(() => false)) await spatial.getByRole('button').first().click()
-  else await memory.locator('.options button').first().click()
-  await expect(memory.getByText('Jawaban:')).not.toContainText('—')
-  await memory.getByRole('button', { name: 'Kirim' }).click()
+  else await page.locator('.options button').first().click()
+  await expect(page.getByText('Jawaban:')).not.toContainText('—')
+  await page.getByRole('button', { name: 'Kirim' }).click()
 }
 
 async function submitAttentionAnswer(page: Page) {
@@ -101,6 +99,7 @@ export async function submitCurrentAnswer(page: Page, state: AppState) {
       break
     case 'processing-speed':
       await page.getByTestId('processing-speed').locator('.options button').first().click()
+      await expect(page.getByTestId('processing-speed').getByRole('button', { name: 'Lanjut' })).toBeEnabled()
       await page.getByTestId('processing-speed').getByRole('button', { name: 'Lanjut' }).click()
       break
     default:
@@ -123,4 +122,26 @@ export async function advanceAssessment(page: Page, until: AppState, observed = 
     await waitForNextAppState(page, current.questionId, current.state)
   }
   throw new Error(`Did not reach ${until} within the assessment bounds.`)
+}
+
+/** Advance through ordinary controls until the requested working-memory renderer is active. */
+export async function advanceToMemoryRenderer(page: Page, testId: string, titlePrefix?: string) {
+  for (let step = 0; step < 100; step += 1) {
+    const current = await currentAppState(page)
+    if (!current) {
+      await expect.poll(() => currentAppState(page), { timeout: 12_000 }).not.toBeNull()
+      continue
+    }
+    if (current.state === 'memory') {
+      const renderer = page.getByTestId(testId)
+      const title = await renderer.getAttribute('data-question-title').catch(() => null)
+      if (await renderer.isVisible().catch(() => false) && (!titlePrefix || title?.startsWith(titlePrefix))) return
+    }
+    if (current.state === 'complete' || current.state === 'parent-report' || current.state === 'detailed-report') {
+      throw new Error(`Reached ${current.state} before memory renderer ${testId}.`)
+    }
+    await submitCurrentAnswer(page, current.state)
+    await waitForNextAppState(page, current.questionId, current.state)
+  }
+  throw new Error(`Did not reach memory renderer ${testId} within the assessment bounds.`)
 }

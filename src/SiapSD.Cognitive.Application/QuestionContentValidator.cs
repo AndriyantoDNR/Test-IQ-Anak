@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using SiapSD.Cognitive.Domain;
 
 namespace SiapSD.Cognitive.Application;
@@ -33,7 +34,13 @@ public sealed class QuestionContentValidator
         if (string.IsNullOrWhiteSpace(question.Instruction) || string.IsNullOrWhiteSpace(question.StimulusJson) || string.IsNullOrWhiteSpace(question.CorrectAnswerJson)) errors.Add(Prefix("required content is missing"));
         if (question.Options.GroupBy(x => x.Code).Any(x => x.Count() > 1) || question.Options.GroupBy(x => x.Text.Trim(), StringComparer.OrdinalIgnoreCase).Any(x => x.Count() > 1)) errors.Add(Prefix("duplicate options"));
         if (question.Options.Count > 0 && question.Options.Count(x => x.IsCorrect) != 1) errors.Add(Prefix("exactly one correct option is required"));
-        try { using var json = JsonDocument.Parse(question.StimulusJson); if (question.QuestionType == QuestionType.GridPlanning) { var root = json.RootElement; var result = PlanningPathValidator.Validate(root.GetProperty("rows").GetInt32(), root.GetProperty("columns").GetInt32(), root.GetProperty("start").EnumerateArray().Select(x=>x.GetInt32()).ToArray(), root.GetProperty("goal").EnumerateArray().Select(x=>x.GetInt32()).ToArray(), root.GetProperty("obstacles").EnumerateArray().Select(x=>x.EnumerateArray().Select(y=>y.GetInt32()).ToArray()), root.GetProperty("optimalSteps").GetInt32()); if (!result.Reachable) errors.Add(Prefix(result.Error!)); } } catch (Exception) { errors.Add(Prefix("malformed stimulus")); }
+        if (question.Code.StartsWith("CORE-", StringComparison.Ordinal) && question.QuestionType is QuestionType.PatternChoice or QuestionType.MissingPart or QuestionType.OddOneOut or QuestionType.MathChoice)
+        {
+            var placeholder = new Regex(@"\b(latihan\s*\d+|pilihan\s*[\w-]+|option\s*[abc]|question\s*\d+|soal\s*\d+)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (placeholder.IsMatch(question.QuestionText) || question.Options.Any(x => placeholder.IsMatch(x.Text))) errors.Add(Prefix("placeholder content is not permitted in canonical standard questions"));
+            if (question.Options.Count < 3 || question.Options.Select(x => Normalize(x.Text)).Distinct().Count() < 3) errors.Add(Prefix("standard question requires distinct meaningful answer choices"));
+        }
+        try { using var json = JsonDocument.Parse(question.StimulusJson ?? "{}"); if (question.QuestionType == QuestionType.GridPlanning) { var root = json.RootElement; var result = PlanningPathValidator.Validate(root.GetProperty("rows").GetInt32(), root.GetProperty("columns").GetInt32(), root.GetProperty("start").EnumerateArray().Select(x=>x.GetInt32()).ToArray(), root.GetProperty("goal").EnumerateArray().Select(x=>x.GetInt32()).ToArray(), root.GetProperty("obstacles").EnumerateArray().Select(x=>x.EnumerateArray().Select(y=>y.GetInt32()).ToArray()), root.GetProperty("optimalSteps").GetInt32()); if (!result.Reachable) errors.Add(Prefix(result.Error!)); } } catch (Exception) { errors.Add(Prefix("malformed stimulus")); }
         return errors;
     }
 

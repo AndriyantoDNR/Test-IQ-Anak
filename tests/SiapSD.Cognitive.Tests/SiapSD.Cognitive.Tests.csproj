@@ -14,6 +14,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.31" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\SiapSD.Cognitive.Domain\SiapSD.Cognitive.Domain.csproj" />
     <ProjectReference Include="..\..\src\SiapSD.Cognitive.Application\SiapSD.Cognitive.Application.csproj" />
+    <ProjectReference Include="..\..\src\SiapSD.Cognitive.Infrastructure\SiapSD.Cognitive.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

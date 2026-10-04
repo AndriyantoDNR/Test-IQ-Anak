@@ -158,9 +158,10 @@ function MemoryQuestion({ question, onSubmit }: { question: Question; onSubmit: 
   const [phase, setPhase] = useState<'presenting' | 'retentionGap' | 'responding'>('presenting')
   const [shownItem, setShownItem] = useState('')
   const [response, setResponse] = useState<string[]>([])
+  const [responseCandidates, setResponseCandidates] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const responseStartedAt = useRef(0)
-  const stimulus = JSON.parse(question.stimulusJson ?? '{}') as { sequence?: string[]; presentationDurationMs?: number; retentionGapMs?: number }
+  const stimulus = JSON.parse(question.stimulusJson ?? '{}') as { sequence?: string[]; candidatePool?: string[]; presentationDurationMs?: number; retentionGapMs?: number }
   const sequence = stimulus.sequence ?? []
   const isSpatial = question.questionType === 'SpatialMemory'
   const isAuditory = question.questionType === 'AuditorySequence' || question.questionType === 'InstructionSequence'
@@ -169,6 +170,8 @@ function MemoryQuestion({ question, onSubmit }: { question: Question; onSubmit: 
     const timers: number[] = []
     setPhase('presenting')
     setResponse([])
+    // Layout is independent of the answer sequence. Spatial locations deliberately remain fixed.
+    setResponseCandidates(isSpatial ? [] : [...new Set(stimulus.candidatePool ?? sequence)].sort(() => Math.random() - 0.5))
     setSubmitting(false)
     responseStartedAt.current = 0
     let index = 0
@@ -202,5 +205,5 @@ function MemoryQuestion({ question, onSubmit }: { question: Question; onSubmit: 
 
   const choose = (item: string) => setResponse(current => [...current, item])
   const cells = Array.from({ length: 9 }, (_, index) => `${Math.floor(index / 3)},${index % 3}`)
-  return <section className="player" data-testid={`memory-${isSpatial ? 'spatial' : isAuditory ? 'auditory' : 'sequence'}`} data-question-id={question.id} data-question-title={question.questionText}><p>{question.instruction}</p><h2>{phase === 'presenting' ? (isAuditory ? 'Dengarkan…' : shownItem) : phase === 'retentionGap' ? 'Tunggu sebentar…' : isSpatial ? 'Pilih kotak sesuai urutan' : 'Susun ulang urutan'}</h2>{phase === 'presenting' && isSpatial && <div className="memory-grid" data-testid="spatial-grid">{cells.map(cell => <div key={cell} data-active={cell === shownItem}>{cell === shownItem ? '●' : ''}</div>)}</div>}{phase === 'responding' && <><p>Jawaban: {response.join(' → ') || '—'}</p>{isSpatial ? <div className="memory-grid" data-testid="spatial-response">{cells.map(cell => <button key={cell} disabled={submitting} onClick={() => choose(cell)} aria-label={`Kotak ${cell}`}/>)}</div> : <div className="options">{sequence.map((item, index) => <button key={`${item}-${index}`} disabled={submitting} onClick={() => choose(item)}>{item}</button>)}</div>}<button disabled={!response.length || submitting} onClick={() => setResponse(current => current.slice(0, -1))}>Undo</button><button disabled={submitting} onClick={async () => { setSubmitting(true); await onSubmit(JSON.stringify(response), responseStartedAt.current) }}>Kirim</button></>}</section>
+  return <section className="player" data-testid={`memory-${isSpatial ? 'spatial' : isAuditory ? 'auditory' : 'sequence'}`} data-question-id={question.id} data-question-title={question.questionText}><p>{question.instruction}</p><h2>{phase === 'presenting' ? (isAuditory ? 'Dengarkan…' : shownItem) : phase === 'retentionGap' ? 'Tunggu sebentar…' : isSpatial ? 'Pilih kotak sesuai urutan' : 'Susun ulang urutan'}</h2>{phase === 'presenting' && isSpatial && <div className="memory-grid" data-testid="spatial-grid">{cells.map(cell => <div key={cell} data-active={cell === shownItem}>{cell === shownItem ? '●' : ''}</div>)}</div>}{phase === 'responding' && <><p>Jawaban: {response.join(' → ') || '—'}</p>{isSpatial ? <div className="memory-grid" data-testid="spatial-response">{cells.map(cell => <button key={cell} disabled={submitting} onClick={() => choose(cell)} aria-label={`Kotak ${cell}`}/>)}</div> : <div className="options">{responseCandidates.map(item => <button key={item} disabled={submitting} onClick={() => choose(item)}>{item}</button>)}</div>}<button disabled={!response.length || submitting} onClick={() => setResponse(current => current.slice(0, -1))}>Undo</button><button disabled={submitting} onClick={async () => { setSubmitting(true); await onSubmit(JSON.stringify(response), responseStartedAt.current) }}>Kirim</button></>}</section>
 }
