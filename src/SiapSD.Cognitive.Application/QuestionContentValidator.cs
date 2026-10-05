@@ -34,6 +34,11 @@ public sealed class QuestionContentValidator
         if (string.IsNullOrWhiteSpace(question.Instruction) || string.IsNullOrWhiteSpace(question.StimulusJson) || string.IsNullOrWhiteSpace(question.CorrectAnswerJson)) errors.Add(Prefix("required content is missing"));
         if (question.Options.GroupBy(x => x.Code).Any(x => x.Count() > 1) || question.Options.GroupBy(x => x.Text.Trim(), StringComparer.OrdinalIgnoreCase).Any(x => x.Count() > 1)) errors.Add(Prefix("duplicate options"));
         if (question.Options.Count > 0 && question.Options.Count(x => x.IsCorrect) != 1) errors.Add(Prefix("exactly one correct option is required"));
+        if (question.IsPublished)
+        {
+            var childPlaceholder = new Regex(@"^(target|distractor|item)-\d+$|^option[- ]?[abc0-9]+$|^pilihan\s+\d*[abc]$|^.*latihan\s+\d+$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (childPlaceholder.IsMatch(question.Instruction) || childPlaceholder.IsMatch(question.QuestionText) || question.Options.Any(x => childPlaceholder.IsMatch(x.Text))) errors.Add(Prefix("child-visible placeholder content is not permitted"));
+        }
         if (question.Code.StartsWith("CORE-", StringComparison.Ordinal) && question.QuestionType is QuestionType.PatternChoice or QuestionType.MissingPart or QuestionType.OddOneOut or QuestionType.MathChoice)
         {
             var placeholder = new Regex(@"\b(latihan\s*\d+|pilihan\s*[\w-]+|option\s*[abc]|question\s*\d+|soal\s*\d+)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);

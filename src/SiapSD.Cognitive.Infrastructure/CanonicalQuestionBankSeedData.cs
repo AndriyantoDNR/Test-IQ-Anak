@@ -40,7 +40,10 @@ public static class CanonicalQuestionBankSeedData
                     var v1 = await db.Questions.SingleOrDefaultAsync(x => x.Code == v1Code);
                     if (v1 is not null) v1.IsPublished = false;
                 }
-                var code = family == "standard" ? $"{v1Code}-V2" : v1Code;
+                // Semantic-display V3 is a new canonical row; historic rows remain available
+                // to existing response snapshots but cannot be selected again.
+                foreach (var previous in await db.Questions.Where(x => x.Code.StartsWith(v1Code)).ToListAsync()) previous.IsPublished = false;
+                var code = $"{v1Code}-V3";
                 if (await db.Questions.AnyAsync(x => x.Code == code)) continue;
                 var question = Create(subtest, code, index, family);
                 var errors = validator.Validate(question);
@@ -66,16 +69,35 @@ public static class CanonicalQuestionBankSeedData
         else if (family == "planning")
         {
             q.QuestionType = QuestionType.GridPlanning; var obstacle = new[] { 1 + (index - 1) / 4, 1 + (index - 1) % 4 };
-            q.Instruction = "Susun langkah agar anak mencapai bintang."; q.QuestionText = $"Rute grid {index}";
+            q.Instruction = "Susun langkah agar robot mencapai bintang."; q.QuestionText = "Bantu robot menuju bintang.";
             q.StimulusJson = JsonSerializer.Serialize(new { rows = 6, columns = 6, start = new[] { 0, 0 }, goal = new[] { 5, 5 }, obstacles = new[] { obstacle }, optimalSteps = 10 }); q.CorrectAnswerJson = "[\"Right\",\"Right\",\"Right\",\"Right\",\"Right\",\"Down\",\"Down\",\"Down\",\"Down\",\"Down\"]";
         }
         else
         {
             q.QuestionType = family switch { "attention" => subtest.Name == "Target Detection" ? QuestionType.TargetDetection : QuestionType.VisualSearch, "executive" => subtest.Name == "Inhibitory Control" ? QuestionType.InhibitoryControl : QuestionType.RuleSwitch, "speed" => QuestionType.SymbolMatching, "standard" when subtest.Name == "Pattern Completion" => QuestionType.PatternChoice, "standard" when subtest.Name == "Missing Part" => QuestionType.MissingPart, "standard" when subtest.Name == "Odd One Out" => QuestionType.OddOneOut, _ => QuestionType.MathChoice };
             if (family == "standard") { PopulateStandard(q, subtest.Name, index, difficulty); return q; }
-            var correct = "B"; q.Instruction = family == "attention" ? "Pilih semua target yang diminta." : family == "executive" ? "Ikuti aturan pada kartu." : "Pilih jawaban terbaik."; q.QuestionText = $"{subtest.Name} — latihan {index}";
-            q.StimulusJson = JsonSerializer.Serialize(new { task = subtest.Name, item = index, target = $"target-{index}", items = new[] { $"distractor-{index}", $"target-{index}", $"distractor-{index + 1}" }, durationMs = family == "speed" ? 60000 : 0 }); q.CorrectAnswerJson = JsonSerializer.Serialize(correct);
-            q.Options.AddRange(new[] { new QuestionOption { Code = "A", Text = $"Pilihan {index}A", DisplayOrder = 1 }, new QuestionOption { Code = "B", Text = $"Pilihan {index}B", DisplayOrder = 2, IsCorrect = true }, new QuestionOption { Code = "C", Text = $"Pilihan {index}C", DisplayOrder = 3 } });
+            if (family == "attention")
+            {
+                var target = subtest.Name == "Target Detection" ? "⭐" : "🔺";
+                var displays = subtest.Name == "Target Detection" ? new[] { "⭐", "●", "▲", "■", "⭐", "●", "▲", "■", "⭐" } : new[] { "🔻", "🔺", "🔶", "🔺", "🔻", "🔶", "🔺", "🔻", "🔶" };
+                var items = displays.Select((display, position) => new { id = $"cell-{index}-{position}", display }).ToArray();
+                q.Instruction = "Sentuh semua gambar yang sama dengan contoh."; q.QuestionText = "Cari gambar yang cocok";
+                q.StimulusJson = JsonSerializer.Serialize(new { variant = index, target = new { id = $"target-{index}", display = target }, items }); q.CorrectAnswerJson = JsonSerializer.Serialize(items.Where(x => x.display == target).Select(x => x.id));
+            }
+            else if (family == "executive")
+            {
+                var ruleSwitch = subtest.Name == "Rule Switching";
+                q.Instruction = ruleSwitch ? "ATURAN SEKARANG: pilih berdasarkan WARNA." : "Pilih warna yang BERLAWANAN dengan kartu.";
+                q.QuestionText = ruleSwitch ? "Kartu ini berwarna biru. Pilih BIRU." : "Kartu ini berwarna merah. Pilih BIRU.";
+                q.StimulusJson = JsonSerializer.Serialize(new { variant = index, rule = ruleSwitch ? "warna" : "lawan-warna", stimulus = new { display = ruleSwitch ? "🔵 ▲" : "🔴" }, responseDisplays = new[] { "🔴 Merah", "🔵 Biru", "🟡 Kuning" } }); q.CorrectAnswerJson = JsonSerializer.Serialize("B");
+                q.Options.AddRange(new[] { new QuestionOption { Code = "A", Text = "🔴 Merah", DisplayOrder = 1 }, new QuestionOption { Code = "B", Text = "🔵 Biru", DisplayOrder = 2, IsCorrect = true }, new QuestionOption { Code = "C", Text = "🟡 Kuning", DisplayOrder = 3 } });
+            }
+            else
+            {
+                q.Instruction = "Pilih gambar yang sama dengan contoh."; q.QuestionText = "Contoh: 🐟 — mana pasangan yang sama?";
+                q.StimulusJson = JsonSerializer.Serialize(new { variant = index, target = new { id = $"symbol-{index}", display = "🐟" }, durationMs = 60000 }); q.CorrectAnswerJson = JsonSerializer.Serialize("B");
+                q.Options.AddRange(new[] { new QuestionOption { Code = "A", Text = "🌟", DisplayOrder = 1 }, new QuestionOption { Code = "B", Text = "🐟", DisplayOrder = 2, IsCorrect = true }, new QuestionOption { Code = "C", Text = "🍎", DisplayOrder = 3 } });
+            }
         }
         return q;
     }
